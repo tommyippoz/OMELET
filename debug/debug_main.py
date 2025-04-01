@@ -16,9 +16,9 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.tree import DecisionTreeClassifier, ExtraTreeClassifier
 from xgboost import XGBClassifier
 
-from omelet.classifiers.FailControlledClassifier import FailControlledClassifier
+from omelet.classifiers.FailControlledClassifier import FailControlledClassifier, FCCEnsemble
 from omelet.misclassification_detection.MisclassificationDetector import SPROUTGroup, SPROUTRejection
-from omelet.utils.classifier_utils import get_classifier_name
+from omelet.utils.classifier_utils import get_classifier_name, compute_omission_metrics
 from omelet.utils.dataset_utils import read_binary_tabular_dataset, read_tabular_dataset
 from omelet.utils.general_utils import current_ms
 
@@ -38,7 +38,7 @@ VERBOSE = True
 # True if you want to force binary classification
 FORCE_BINARY = False
 # Cost of rejections
-REJECT_COST = 0
+REJECT_TAG = -1
 
 # Set random seed for reproducibility
 random.seed(42)
@@ -53,25 +53,14 @@ def get_classifiers() -> list:
     """
     base_learners = [
         ExtraTreeClassifier(),
-        # XGBClassifier(n_estimators=100),
+        XGBClassifier(n_estimators=100),
         LinearDiscriminantAnalysis(),
         Pipeline([("norm", MinMaxScaler()), ("gnb", GaussianNB())]),
-        # RandomForestClassifier(n_estimators=100),
-        # LogisticRegression(),
-        # ExtraTreesClassifier(n_estimators=100),
+        RandomForestClassifier(n_estimators=100),
+        LogisticRegression(),
+        ExtraTreesClassifier(n_estimators=100),
     ]
     return base_learners
-
-
-def get_cost_matrix() -> list:
-    """
-    Returns the list of cost matrix to be used in the experiments
-    :return:
-    """
-    if FORCE_BINARY:
-        return [100, -1, -10000, 1]
-    else:
-        return [1, -100]
 
 
 def get_alrs() -> list:
@@ -79,7 +68,7 @@ def get_alrs() -> list:
     Returns the ALRs to be used in the analysis
     :return:
     """
-    return [0.01, 0.001, 0.0001, 0.00001]
+    return [0.01, 0.001]
 
 
 def get_misclassification_detectors(classifier, data_dict: dict) -> list:
@@ -97,41 +86,6 @@ def get_misclassification_detectors(classifier, data_dict: dict) -> list:
     return detector_list
 
 
-def predict_fcc_ensemble(fcc_ensemble, x_test, reject_tag=-1):
-    """
-    Returns the prediction of an ensemble of FCCs
-    :param fcc_ensemble: a list of fccs
-    :param x_test: a test set
-    :param reject_tag: a tag that happens when predictions are rejected
-    :return:
-    """
-    fcc_preds = numpy.zeros(shape=[x_test.shape[0], len(fcc_ensemble)])
-    for i in range(0, len(fcc_ensemble)):
-        fcc_preds[:, i] = fcc_ensemble[i].predict(x_test)
-    ens_pred = numpy.full(fcc_preds.shape[0], reject_tag)
-    for i in range(0, fcc_preds.shape[0]):
-        for j in range(0, len(fcc_ensemble)):
-            if numpy.isfinite(fcc_preds[i, j]):
-                ens_pred[i] = fcc_preds[i, j]
-                break
-    return ens_pred
-
-
-def compute_omission_metrics(y_true: numpy.ndarray, y_fcc: numpy.ndarray, reject_tag=None) -> dict:
-    """
-    Assumes that y_fcc may have omissions, labeled as 'reject_tag'
-    :param y_true: the ground truth labels
-    :param y_fcc: the prediction of the FCC
-    :param reject_tag: the tag used to label rejections, default is None
-    :return: a dictionary of metrics
-    """
-    met_dict = {}
-    met_dict['phi'] = numpy.count_nonzero(y_fcc == reject_tag) / len(y_true)
-    met_dict['alpha_w'] = sum(y_true == y_fcc) / len(y_true)
-    met_dict['eps_w'] = 1 - met_dict['phi'] - met_dict['alpha_w']
-    return met_dict
-
-
 # ----------------------- MAIN ROUTINE ---------------------
 # This script replicates experiments done for testing the robustness of confidence ensembles
 if __name__ == '__main__':
@@ -139,7 +93,14 @@ if __name__ == '__main__':
     # This is for checkpointing experiments, otherwise it starts every time from scratch
     exp_hist = None
     if os.path.exists(SCORES_FILE):
-        exp_hist = pandas.read_csv(SCORES_FILE, usecols=['dataset_tag', 'clf_name', 'misc_detector', 'alr'])
+        exp_hist = pandas.read_csv(SCORES_FILE, usecols=['dataset_tag', 'fcc_name'])
+    else:
+        with open(SCORES_FILE, 'w') as file_handler:
+            file_handler.write("dataset_tag,clf_name,misc_detector,fcc_name,alr,meets_alr,"
+                               "val_clf_acc,val_fcc_aw,val_fcc_ew,val_fcc_phi,"
+                               "test_clf_acc,test_fcc_aw,test_fcc_ew,test_fcc_phi,"
+                               "best_fcc_name,best_val_clf_acc,best_val_fcc_aw,best_val_fcc_ew,best_val_fcc_phi,"
+                               "best_test_clf_acc,best_test_fcc_aw,best_test_fcc_ew,best_test_fcc_phi\n")
 
     # Iterating over datasets
     for dataset_file in os.listdir(CSV_FOLDER):
@@ -149,12 +110,12 @@ if __name__ == '__main__':
             # Read dataset
             if FORCE_BINARY:
                 data_dict = read_binary_tabular_dataset(dataset_name=os.path.join(CSV_FOLDER, dataset_file),
-                                                        label_name=LABEL_NAME, limit=10000,
+                                                        label_name=LABEL_NAME, limit=50000,
                                                         train_size=TVT_SPLIT[0], val_size=TVT_SPLIT[1],
                                                         shuffle=True, l_encoding=True, normal_tag="normal")
             else:
                 data_dict = read_tabular_dataset(dataset_name=os.path.join(CSV_FOLDER, dataset_file),
-                                                 label_name=LABEL_NAME, limit=10000,
+                                                 label_name=LABEL_NAME, limit=50000,
                                                  train_size=TVT_SPLIT[0], val_size=TVT_SPLIT[1],
                                                  shuffle=True, l_encoding=True)
 
@@ -173,6 +134,7 @@ if __name__ == '__main__':
                 print("---------------------------------------------------------------------")
 
                 # Loops over Base classifiers
+                best_single_fcc = None
                 for base_clf in learners:
 
                     clf_name = get_classifier_name(base_clf)
@@ -181,38 +143,96 @@ if __name__ == '__main__':
                     base_clf.fit(data_dict["x_train"], data_dict["y_train"])
                     train_time = current_ms() - start_time
                     print("\n Training classifier %s completed in %d ms" % (clf_name, train_time))
-                    print("\t Validation Accuracy: %.5f" %
-                          sklearn.metrics.accuracy_score(data_dict["y_val"], base_clf.predict(data_dict["x_val"])))
-                    print("\t Test Accuracy: %.5f" %
-                          sklearn.metrics.accuracy_score(data_dict["y_test"], base_clf.predict(data_dict["x_test"])))
+                    clf_val_acc = sklearn.metrics.accuracy_score(data_dict["y_val"],
+                                                                 base_clf.predict(data_dict["x_val"]))
+                    clf_test_acc = sklearn.metrics.accuracy_score(data_dict["y_test"],
+                                                                  base_clf.predict(data_dict["x_test"]))
+                    print("\t Validation Accuracy: %.5f" % clf_val_acc)
+                    print("\t Test Accuracy: %.5f" % clf_test_acc)
 
+                    # Creates FCCs and checks if they meet ALR (ew < ALR).
+                    # Keeps track of the one with highest aw and ew < ALR for logging
                     for misc_detector in get_misclassification_detectors(base_clf, data_dict):
 
-                        fcc = FailControlledClassifier(base_clf, misc_detector, data_dict["x_val"], data_dict["y_val"], alr)
+                        fcc = FailControlledClassifier(base_clf, misc_detector, data_dict["x_val"], data_dict["y_val"],
+                                                       alr, 15, REJECT_TAG)
                         fcc.fit(data_dict["x_train"], data_dict["y_train"])
+                        val_fcc_metrics = \
+                            compute_omission_metrics(data_dict["y_val"], fcc.predict(data_dict["x_val"]),
+                                                     reject_tag=REJECT_TAG)
+                        test_fcc_metrics = \
+                            compute_omission_metrics(data_dict["y_test"], fcc.predict(data_dict["x_test"]),
+                                                     reject_tag=REJECT_TAG)
                         if fcc.is_fcc_meeting_alr():
                             suitable_fccs.append(fcc)
                             print("\t %s MEETS the desired ALR=(%.5f<%s) ON THE VALIDATION, aw=%.5f, phi=%.5f" %
-                                  (fcc.get_name(), fcc.train_metrics['ew'], str(alr), fcc.train_metrics['aw'], fcc.train_metrics['phi']))
-                            fcc.predict(data_dict["x_val"])
+                                  (fcc.get_name(), val_fcc_metrics['ew'], str(alr), val_fcc_metrics['aw'],
+                                   val_fcc_metrics['phi']))
+                            if best_single_fcc is None or best_single_fcc[1]['aw'] < val_fcc_metrics['aw']:
+                                best_single_fcc = [fcc, val_fcc_metrics, test_fcc_metrics]
                         else:
                             print("\t %s DOES NOT MEET the desired ALR=%s" % (fcc.get_name(), str(alr)))
-                            # Loop over calibration strategies (None means no calibration)
+
+                        # Checks if FCC was already logged in results
+                        if not (exp_hist is not None and (((exp_hist['dataset_tag'] == dataset_name) &
+                                                           (exp_hist['fcc_name'] == fcc.get_name())).any())):
+                            with open(SCORES_FILE, 'a') as file_handler:
+                                file_handler.write(
+                                    dataset_name + "," + clf_name + "," + misc_detector.get_name() + "," +
+                                    fcc.get_name() + "," + str(alr) + "," + str(fcc.is_fcc_meeting_alr()) + "," +
+                                    str(clf_val_acc) + "," + str(val_fcc_metrics['aw']) + "," +
+                                    str(val_fcc_metrics['ew']) + "," + str(val_fcc_metrics['phi']) + "," +
+                                    str(clf_test_acc) + "," + str(test_fcc_metrics['aw']) + "," +
+                                    str(test_fcc_metrics['ew']) + "," + str(test_fcc_metrics['phi']))
+                                file_handler.write("\n")
 
                 # Here we have a complete list of suitable candidates
                 # Evaluation using all available FCCs that meet requirements
-                val_fcc_metrics = \
-                    compute_omission_metrics(data_dict["y_val"],
-                                             predict_fcc_ensemble(suitable_fccs, data_dict["x_val"], reject_tag = -1),
-                                             reject_tag=-1)
-                test_fcc_metrics = \
+                ens_fcc = FCCEnsemble(suitable_fccs, data_dict["x_val"], data_dict["y_val"], alr, REJECT_TAG)
+                ens_fcc.fit(data_dict["x_train"], data_dict["y_train"])
+                ens_val_fcc_metrics = \
+                    compute_omission_metrics(data_dict["y_val"], ens_fcc.predict(data_dict["x_val"]),
+                                             reject_tag=REJECT_TAG)
+                ens_test_fcc_metrics = \
                     compute_omission_metrics(data_dict["y_test"],
-                                             predict_fcc_ensemble(suitable_fccs, data_dict["x_test"], reject_tag=-1),
-                                             reject_tag=-1)
+                                             ens_fcc.predict(data_dict["x_test"]),
+                                             reject_tag=REJECT_TAG)
                 print("%d FCCs meet the desired ALR\n\t the Ensemble has "
                       "\n\t\t VALIDATION SCORES aw %.5f, ew %.5f, phi %.5f and "
                       "\n\t\t TEST SCORES aw %.5f, ew %.5f, phi %.5f" %
                       (len(suitable_fccs),
-                       val_fcc_metrics['alpha_w'], val_fcc_metrics['eps_w'], val_fcc_metrics['phi'],
-                       test_fcc_metrics['alpha_w'], test_fcc_metrics['eps_w'], test_fcc_metrics['phi']))
+                       ens_val_fcc_metrics['aw'], ens_val_fcc_metrics['ew'], ens_val_fcc_metrics['phi'],
+                       ens_test_fcc_metrics['aw'], ens_test_fcc_metrics['ew'], ens_test_fcc_metrics['phi']))
 
+                val_fcc_metrics = best_single_fcc[1]
+                test_fcc_metrics = best_single_fcc[2]
+                print("\t whereas the best individual FCC that meets ALR has "
+                      "\n\t\t VALIDATION SCORES aw %.5f, ew %.5f, phi %.5f and "
+                      "\n\t\t TEST SCORES aw %.5f, ew %.5f, phi %.5f" %
+                      (val_fcc_metrics['aw'], val_fcc_metrics['ew'], val_fcc_metrics['phi'],
+                       test_fcc_metrics['aw'], test_fcc_metrics['ew'], test_fcc_metrics['phi']))
+
+                # Check
+                e_p = ens_fcc.predict(data_dict["x_val"])
+                b_p = best_single_fcc[0].predict(data_dict["x_val"])
+                a = (e_p != b_p) & (b_p == REJECT_TAG)
+                print(sum(a))
+
+                if not (exp_hist is not None and (((exp_hist['dataset_tag'] == dataset_name) &
+                                                   (exp_hist['fcc_name'] == ens_fcc.get_name())).any())):
+                    with open(SCORES_FILE, 'a') as file_handler:
+                        file_handler.write(dataset_name + ",Ensemble,None," + ens_fcc.get_name() + "," + str(alr) + "," +
+                                           str(ens_fcc.is_fcc_meeting_alr()) + "," +
+                                           str(ens_val_fcc_metrics['aw']) + "," + str(ens_val_fcc_metrics['aw']) + "," +
+                                           str(ens_val_fcc_metrics['ew']) + "," + str(
+                            ens_val_fcc_metrics['phi']) + "," +
+                                           str(ens_test_fcc_metrics['aw']) + "," + str(
+                            ens_test_fcc_metrics['aw']) + "," +
+                                           str(ens_test_fcc_metrics['ew']) + "," + str(
+                            ens_test_fcc_metrics['phi']) + "," +
+                                           best_single_fcc[0].get_name() + "," + str(clf_val_acc) + "," + str(
+                            val_fcc_metrics['aw']) + "," +
+                                           str(val_fcc_metrics['ew']) + "," + str(val_fcc_metrics['phi']) + "," +
+                                           str(clf_test_acc) + "," + str(test_fcc_metrics['aw']) + "," +
+                                           str(test_fcc_metrics['ew']) + "," + str(test_fcc_metrics['phi']))
+                        file_handler.write("\n")

@@ -174,3 +174,18 @@ def compute_value(y, y_pred, cost_matrix, reject_value: int = 0, reject_tag=None
         return compute_binary_value(y_pred, y, cost_matrix, reject_value, reject_tag, normal_tag)
     else:
         return compute_multi_value(y_pred, y, cost_matrix, reject_value, reject_tag)
+
+
+def compute_omission_metrics(y_true: numpy.ndarray, y_fcc: numpy.ndarray, reject_tag=None) -> dict:
+    """
+    Assumes that y_fcc may have omissions, labeled as 'reject_tag'
+    :param y_true: the ground truth labels
+    :param y_fcc: the prediction of the FCC
+    :param reject_tag: the tag used to label rejections, default is None
+    :return: a dictionary of metrics
+    """
+    met_dict = {}
+    met_dict['phi'] = numpy.count_nonzero(y_fcc == reject_tag) / len(y_true)
+    met_dict['aw'] = sum(y_true == y_fcc) / len(y_true)
+    met_dict['ew'] = 1 - met_dict['phi'] - met_dict['aw']
+    return met_dict
