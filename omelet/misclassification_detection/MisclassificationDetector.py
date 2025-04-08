@@ -5,6 +5,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from omelet.misclassification_detection.SPROUTConnector import build_sprout_object, SPROUTGroup
 from omelet.utils.classifier_utils import compute_binary_value, compute_multi_value, is_fit
+from omelet.utils.general_utils import current_ms
 
 
 class MisclassificationDetector:
@@ -17,6 +18,7 @@ class MisclassificationDetector:
         Constructor
         """
         self.is_fit = False
+        self.train_time = None
 
     def fit(self, proba: numpy.ndarray, y_true: numpy.ndarray, verbose=True):
         """
@@ -27,7 +29,9 @@ class MisclassificationDetector:
         if proba is None:
             print('Cannot fit with None probas')
         else:
+            start_ms = current_ms()
             self.fit_rejector(proba, numpy.argmax(proba, axis=1), y_true, verbose)
+            self.train_time = current_ms() - start_ms
             self.is_fit = True
 
     def fit_rejector(self, proba: numpy.ndarray, y_pred: numpy.ndarray, y_true: numpy.ndarray, verbose=True):
@@ -348,7 +352,11 @@ class SPROUTRejection(MisclassificationDetector):
         :param test_proba: the data to apply the strategy to
         :return:
         """
-        return self.sprout.predict_misclassifications_probability(x_test, self.classifier, verbose=False)[:, 1]
+        rej_p = self.sprout.predict_misclassifications_probability(x_test, self.classifier, verbose=False)
+        if rej_p.ndim == 2 and rej_p.shape[1] > 1:
+            return rej_p[:, 1]
+        else:
+            return numpy.zeros(x_test.shape[0])
 
     def get_name(self) -> str:
         """
