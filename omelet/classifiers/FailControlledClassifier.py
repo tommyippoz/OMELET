@@ -179,7 +179,7 @@ class FCCEnsemble(FailControlledClassifier):
         True if the FCC meets the ALR requirements
         :return:
         """
-        return self.suitable_fccs_ is not None and len(self.suitable_fccs_) > 0
+        return self.estimators_ is not None and len(self.estimators_) > 0
 
     def reject_probability(self, X):
         """

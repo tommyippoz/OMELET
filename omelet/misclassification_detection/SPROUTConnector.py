@@ -7,7 +7,7 @@ from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier,
 from sklearn.naive_bayes import MultinomialNB, GaussianNB, BernoulliNB, ComplementNB
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.tree import DecisionTreeClassifier, ExtraTreeClassifier
 from sprout.SPROUTObject import SPROUTObject
 from sprout.classifiers.Classifier import LogisticReg
 from xgboost import XGBClassifier
@@ -30,8 +30,12 @@ class SPROUTGroup(Enum):
     UM9 = 14
 
 
+CANDIDATE_ADJUDICATORS = [ExtraTreeClassifier(),
+                          RandomForestClassifier(n_estimators=30)]
+
+
 def build_sprout_object(x_train, y_train, strategies: list = [], label_names: list = None) -> SPROUTObject:
-    sp_obj = SPROUTObject(models_folder="sprout_models")
+    sp_obj = SPROUTObject(models_folder="sprout_models", candidate_adjudicators=CANDIDATE_ADJUDICATORS)
     if SPROUTGroup.UM1 in strategies:
         # Confidence Intervals
         sp_obj.add_calculator_confidence(x_train=x_train, y_train=y_train, confidence_level=0.9)
