@@ -9,7 +9,7 @@ from sklearn.utils.validation import check_is_fitted
 
 from omelet.classifiers.AbstractClassifier import AbstractClassifier
 from omelet.misclassification_detection.MisclassificationDetector import MisclassificationDetector
-from omelet.utils.classifier_utils import is_fit, get_classifier_name
+from omelet.utils.classifier_utils import is_fit, get_classifier_name, compute_omission_metrics
 
 
 class FailControlledClassifier(AbstractClassifier):
@@ -330,9 +330,11 @@ class FCCEnsemble(FailControlledClassifier):
         :return: array of predicted class
         """
         if tag == "train":
-            fcc_preds = numpy.full([self.estimators_[0].train_df.shape[0], len(self.estimators_)], -1, dtype=object)
+            fcc_preds = numpy.full([self.estimators_[0].train_df.shape[0], len(self.estimators_)],
+                                   self.reject_tag, dtype=object)
         else:
-            fcc_preds = numpy.full([self.estimators_[0].test_df.shape[0], len(self.estimators_)], -1, dtype=object)
+            fcc_preds = numpy.full([self.estimators_[0].test_df.shape[0], len(self.estimators_)],
+                                   self.reject_tag, dtype=object)
         for i in range(0, len(self.estimators_)):
             if tag == "train":
                 fcc_preds[:, i] = self.estimators_[i].predict(self.estimators_[i].train_df)

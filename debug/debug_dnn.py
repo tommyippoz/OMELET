@@ -1,4 +1,5 @@
 # Support libs
+import copy
 import os
 import random
 
@@ -51,7 +52,7 @@ def get_alrs() -> list:
     Returns the ALRs to be used in the analysis
     :return:
     """
-    return [0.01, 0.001, 0.0001]
+    return [0.01, 0.001]
 
 
 def get_misclassification_detectors(classifier, data_dict: dict) -> list:
@@ -111,16 +112,19 @@ if __name__ == '__main__':
 
                         # Fetching data
                         clf_df = pandas.read_csv(os.path.join(SCORES_CSV_FOLDER, dataset_name, dnn_csv))
-                        #clf_df = clf_df.sample(frac=1.0)
+                        # clf_df = clf_df.sample(frac=1.0)
 
                         # Adjusting Uncertainty scores
                         for misc_det_name in U_MEASURES:
-                            values = clf_df[misc_det_name].to_numpy()
-                            values -= numpy.min(values)
-                            values /= numpy.max(values, axis=0)
-                            if misc_det_name != 'AutoEncoder Loss (conv)':
-                                values = 1 - values
-                            clf_df[misc_det_name] = values
+                            try:
+                                values = clf_df[misc_det_name].to_numpy()
+                                values -= numpy.min(values)
+                                values /= numpy.max(values, axis=0)
+                                if misc_det_name != 'AutoEncoder Loss (conv)':
+                                    values = 1 - values
+                                clf_df[misc_det_name] = values
+                            except:
+                                print("No %s" % misc_det_name)
 
                         # Splitting
                         clf_df_val = clf_df.iloc[0:int(VAL_TEST_PERC * len(clf_df)), :]
@@ -137,47 +141,53 @@ if __name__ == '__main__':
                         # Keeps track of the one with highest aw and ew < ALR for logging
                         for misc_det_name in U_MEASURES:
 
-                            fcc = CSVFailControlledClassifier(clf_name, misc_det_name, clf_df_val, clf_df_test,
-                                                              alr, 15, REJECT_TAG)
-                            fcc.fit(clf_df_val[[misc_det_name, misc_det_name]], clf_df_val["true_label"])
-                            val_fcc_metrics = \
-                                compute_omission_metrics(clf_df_val["true_label"], fcc.predict(clf_df_val),
-                                                         reject_tag=REJECT_TAG)
-                            test_fcc_metrics = \
-                                compute_omission_metrics(clf_df_test["true_label"], fcc.predict(clf_df_test),
-                                                         reject_tag=REJECT_TAG)
-                            if fcc.is_fcc_meeting_alr():
-                                suitable_fccs.append(fcc)
-                                print("\t %s MEETS the desired ALR=(%.5f<%s) ON THE VALIDATION, aw=%.5f, phi=%.5f" %
-                                      (fcc.get_name(), val_fcc_metrics['ew'], str(alr), val_fcc_metrics['aw'],
-                                       val_fcc_metrics['phi']))
-                                if best_single_fcc is None or best_single_fcc[1]['aw'] < val_fcc_metrics['aw']:
-                                    best_single_fcc = [fcc, val_fcc_metrics, test_fcc_metrics]
-                            else:
-                                print("\t %s DOES NOT MEET the desired ALR=%s" % (fcc.get_name(), str(alr)))
+                            if misc_det_name in clf_df_val.columns:
 
-                            # Checks if FCC was already logged in results
-                            if not (exp_hist is not None and (((exp_hist['dataset_tag'] == dataset_name) &
-                                                               (exp_hist['fcc_name'] == fcc.get_name())).any())):
-                                with open(SCORES_FILE, 'a') as file_handler:
-                                    file_handler.write(
-                                        dataset_name + "," + clf_name + "," + misc_det_name + "," +
-                                        fcc.get_name() + "," + str(alr) + "," + str(fcc.is_fcc_meeting_alr()) + "," +
-                                        str(clf_val_acc) + "," + str(val_fcc_metrics['aw']) + "," +
-                                        str(val_fcc_metrics['ew']) + "," + str(val_fcc_metrics['phi']) + "," +
-                                        str(clf_test_acc) + "," + str(test_fcc_metrics['aw']) + "," +
-                                        str(test_fcc_metrics['ew']) + "," + str(test_fcc_metrics['phi']))
-                                    file_handler.write("\n")
+                                fcc = CSVFailControlledClassifier(clf_name, misc_det_name, clf_df_val, clf_df_test,
+                                                                  alr, 15, REJECT_TAG)
+                                fcc.fit(clf_df_val[[misc_det_name, misc_det_name]], clf_df_val["true_label"])
+                                val_fcc_metrics = \
+                                    compute_omission_metrics(clf_df_val["true_label"].to_numpy(dtype=str),
+                                                             fcc.predict(clf_df_val),
+                                                             reject_tag=REJECT_TAG)
+                                test_fcc_metrics = \
+                                    compute_omission_metrics(clf_df_test["true_label"].to_numpy(dtype=str),
+                                                             fcc.predict(clf_df_test),
+                                                             reject_tag=REJECT_TAG)
+                                if fcc.is_fcc_meeting_alr():
+                                    suitable_fccs.append(fcc)
+                                    print("\t %s MEETS the desired ALR=(%.5f<%s) ON THE VALIDATION, aw=%.5f, phi=%.5f" %
+                                          (fcc.get_name(), val_fcc_metrics['ew'], str(alr), val_fcc_metrics['aw'],
+                                           val_fcc_metrics['phi']))
+                                    if best_single_fcc is None or best_single_fcc[1]['aw'] < val_fcc_metrics['aw']:
+                                        best_single_fcc = [fcc, val_fcc_metrics, test_fcc_metrics]
+                                else:
+                                    print("\t %s DOES NOT MEET the desired ALR=%s" % (fcc.get_name(), str(alr)))
+
+                                # Checks if FCC was already logged in results
+                                if not (exp_hist is not None and (((exp_hist['dataset_tag'] == dataset_name) &
+                                                                   (exp_hist['fcc_name'] == fcc.get_name())).any())):
+                                    with open(SCORES_FILE, 'a') as file_handler:
+                                        file_handler.write(
+                                            dataset_name + "," + clf_name + "," + misc_det_name + "," +
+                                            fcc.get_name() + "," + str(alr) + "," + str(
+                                                fcc.is_fcc_meeting_alr()) + "," +
+                                            str(clf_val_acc) + "," + str(val_fcc_metrics['aw']) + "," +
+                                            str(val_fcc_metrics['ew']) + "," + str(val_fcc_metrics['phi']) + "," +
+                                            str(clf_test_acc) + "," + str(test_fcc_metrics['aw']) + "," +
+                                            str(test_fcc_metrics['ew']) + "," + str(test_fcc_metrics['phi']))
+                                        file_handler.write("\n")
 
                 # Here we have a complete list of suitable candidates
                 # Evaluation using all available FCCs that meet requirements
-                ens_fcc = FCCEnsemble(suitable_fccs, clf_df_val, clf_df_val["true_label"], alr, REJECT_TAG)
+                ens_fcc = FCCEnsemble(suitable_fccs, copy.deepcopy(clf_df_val), clf_df_val["true_label"], alr,
+                                      REJECT_TAG)
                 ens_fcc.fit(clf_df_val[[misc_det_name, misc_det_name]], clf_df_val["true_label"])
                 ens_val_fcc_metrics = \
-                    compute_omission_metrics(clf_df_val["true_label"], ens_fcc.predict_csv("train"),
+                    compute_omission_metrics(clf_df_val["true_label"].to_numpy(dtype=str), ens_fcc.predict_csv("train"),
                                              reject_tag=REJECT_TAG)
                 ens_test_fcc_metrics = \
-                    compute_omission_metrics(clf_df_test["true_label"],
+                    compute_omission_metrics(clf_df_test["true_label"].to_numpy(dtype=str),
                                              ens_fcc.predict_csv("test"),
                                              reject_tag=REJECT_TAG)
                 print("%d FCCs meet the desired ALR\n\t the Ensemble has "
@@ -189,8 +199,12 @@ if __name__ == '__main__':
 
                 if best_single_fcc is not None:
                     best_name = best_single_fcc[0].get_name()
-                    val_fcc_metrics = best_single_fcc[1]
-                    test_fcc_metrics = best_single_fcc[2]
+                    val_fcc_metrics = compute_omission_metrics(clf_df_val["true_label"].to_numpy(dtype=str),
+                                                               best_single_fcc[0].predict(clf_df_val),
+                                                               reject_tag=REJECT_TAG)
+                    test_fcc_metrics = compute_omission_metrics(clf_df_test["true_label"].to_numpy(dtype=str),
+                                                                best_single_fcc[0].predict(clf_df_test),
+                                                                reject_tag=REJECT_TAG)
                     print("\t whereas the best individual FCC that meets ALR has "
                           "\n\t\t VALIDATION SCORES aw %.5f, ew %.5f, phi %.5f and "
                           "\n\t\t TEST SCORES aw %.5f, ew %.5f, phi %.5f" %
