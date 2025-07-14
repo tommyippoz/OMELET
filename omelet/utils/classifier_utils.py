@@ -185,10 +185,8 @@ def compute_omission_metrics(y_true: numpy.ndarray, y_fcc: numpy.ndarray, reject
     :return: a dictionary of metrics
     """
     met_dict = {}
-    a = numpy.count_nonzero(y_fcc == reject_tag)
     met_dict['phi'] = numpy.count_nonzero(y_fcc == reject_tag) / len(y_true)
-    b = y_true == y_fcc
     met_dict['aw'] = sum(y_true == y_fcc) / len(y_true)
-    c = sum((y_true != y_fcc) & (y_fcc != reject_tag)) / len(y_true)
     met_dict['ew'] = sum((y_true != y_fcc) & (y_fcc != reject_tag)) / len(y_true)
+    met_dict['ew_ans'] = met_dict['ew'] / (1 - met_dict['phi']) if (1 - met_dict['phi']) > 0 else 0.0
     return met_dict

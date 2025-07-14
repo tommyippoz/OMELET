@@ -1,4 +1,5 @@
 # Support libs
+import copy
 import os
 import random
 
@@ -7,6 +8,7 @@ import random
 import numpy as numpy
 import pandas
 import sklearn
+from confens.classifiers.ConfidenceBagging import ConfidenceBagging
 from confens.classifiers.ConfidenceBoosting import ConfidenceBoosting
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier
@@ -23,15 +25,15 @@ from omelet.utils.classifier_utils import get_classifier_name, compute_omission_
 from omelet.utils.dataset_utils import read_binary_tabular_dataset, read_tabular_dataset
 from omelet.utils.general_utils import current_ms
 
+OUT_FOLDER = "output_folder"
 # Name of the folder in which look for tabular (CSV) datasets
-
 CSV_FOLDER = "input_folder"
 # Name of the column that contains the label in the tabular (CSV) dataset
 LABEL_NAME = 'multilabel'
 # Name of the 'normal' class in datasets. This will be used only for binary classification (anomaly detection)
 NORMAL_TAG = 0
 # Name of the file in which outputs of the analysis will be saved
-SCORES_FILE = "test_atif.csv"
+SCORES_FILE = "test_atif_ewans.csv"
 # Percentage of test data wrt train data
 TVT_SPLIT = [0.5, 0.2, 0.3]
 # True if debug information needs to be shown
@@ -40,6 +42,10 @@ VERBOSE = True
 FORCE_BINARY = False
 # Cost of rejections
 REJECT_TAG = -1
+# maximum amount of data
+ROW_LIMIT = 100000
+# metric tag
+METRIC_TAG = 'ew_ans'
 
 # Set random seed for reproducibility
 random.seed(42)
@@ -59,9 +65,10 @@ def get_classifiers() -> list:
         RandomForestClassifier(n_estimators=100),
         LogisticRegression(),
         ExtraTreesClassifier(n_estimators=100),
-        ConfidenceBoosting(n_base=10, relative_boost_thr=0.8, clf=ExtraTreeClassifier(),
+        ConfidenceBagging(n_base=10, clf=ExtraTreeClassifier()),
+        ConfidenceBoosting(n_base=20, relative_boost_thr=0.8, clf=ExtraTreeClassifier(),
                            learning_rate=3),
-        ConfidenceBoosting(n_base=10, relative_boost_thr=0.8, clf=RandomForestClassifier(n_estimators=5),
+        ConfidenceBoosting(n_base=20, relative_boost_thr=0.8, clf=RandomForestClassifier(n_estimators=5),
                            learning_rate=3),
     ]
     return base_learners
@@ -107,6 +114,23 @@ def get_misclassification_detectors(classifier, data_dict: dict, detectors_dict:
     return detector_list, detectors_dict
 
 
+def save_fcc_file(dataset_name, alr, suitable_fccs, x, y, tag):
+    to_print = pandas.DataFrame(x)
+    to_print.columns = ["feature_" + str(i+1) for i in range(0, x.shape[1])]
+    to_print["true_label"] = y
+    for fcc in suitable_fccs:
+        fcc_name = fcc.get_name()
+        start_time = current_ms()
+        y_pred = fcc.predict(x)
+        inf_time = current_ms() - start_time
+        y_proba = fcc.predict_proba(x)
+        to_print[fcc_name + "_pred"] = y_pred
+        to_print[fcc_name + "_proba"] = [";".join([str(a) for a in x]) for x in y_proba]
+        to_print[fcc_name + "_time"] = numpy.full(len(y_pred), inf_time*1.0/len(y_pred))
+    filename = dataset_name + "@ALR=" + str(alr) + "@" + tag + ".csv"
+    to_print.to_csv(os.path.join(OUT_FOLDER, filename), index=False)
+
+
 # ----------------------- MAIN ROUTINE ---------------------
 # This script replicates experiments done for testing the robustness of confidence ensembles
 if __name__ == '__main__':
@@ -119,8 +143,8 @@ if __name__ == '__main__':
         with open(SCORES_FILE, 'w') as file_handler:
             file_handler.write(
                 "dataset_tag,clf_name,misc_detector,fcc_name,alr,meets_alr,clf_train_time,detector_train_time,"
-                "val_clf_acc,val_fcc_aw,val_fcc_ew,val_fcc_phi,"
-                "test_clf_acc,test_fcc_aw,test_fcc_ew,test_fcc_phi,"
+                "val_clf_acc,val_fcc_aw,val_fcc_ew,val_fcc_phi,val_fcc_ewans,"
+                "test_clf_acc,test_fcc_aw,test_fcc_ew,test_fcc_phi,test_fcc_ewans,"
                 "best_fcc_name,best_val_clf_acc,best_val_fcc_aw,best_val_fcc_ew,best_val_fcc_phi,"
                 "best_test_clf_acc,best_test_fcc_aw,best_test_fcc_ew,best_test_fcc_phi\n")
 
@@ -132,12 +156,12 @@ if __name__ == '__main__':
             # Read dataset
             if FORCE_BINARY:
                 data_dict = read_binary_tabular_dataset(dataset_name=os.path.join(CSV_FOLDER, dataset_file),
-                                                        label_name=LABEL_NAME, limit=50000,
+                                                        label_name=LABEL_NAME, limit=ROW_LIMIT,
                                                         train_size=TVT_SPLIT[0], val_size=TVT_SPLIT[1],
                                                         shuffle=True, l_encoding=True, normal_tag="normal")
             else:
                 data_dict = read_tabular_dataset(dataset_name=os.path.join(CSV_FOLDER, dataset_file),
-                                                 label_name=LABEL_NAME, limit=50000,
+                                                 label_name=LABEL_NAME, limit=ROW_LIMIT,
                                                  train_size=TVT_SPLIT[0], val_size=TVT_SPLIT[1],
                                                  shuffle=True, l_encoding=True)
 
@@ -182,7 +206,7 @@ if __name__ == '__main__':
                         for misc_detector in det_list:
                             fcc = FailControlledClassifier(base_clf, misc_detector, data_dict["x_val"],
                                                            data_dict["y_val"],
-                                                           alr, 15, REJECT_TAG)
+                                                           alr, 15, REJECT_TAG, METRIC_TAG)
                             fcc.fit(data_dict["x_train"], data_dict["y_train"])
                             val_fcc_metrics = \
                                 compute_omission_metrics(data_dict["y_val"], fcc.predict(data_dict["x_val"]),
@@ -192,9 +216,9 @@ if __name__ == '__main__':
                                                          reject_tag=REJECT_TAG)
                             if fcc.is_fcc_meeting_alr():
                                 suitable_fccs.append(fcc)
-                                print("\t %s MEETS the desired ALR=(%.5f<%s) ON THE VALIDATION, aw=%.5f, phi=%.5f" %
-                                      (fcc.get_name(), val_fcc_metrics['ew'], str(alr), val_fcc_metrics['aw'],
-                                       val_fcc_metrics['phi']))
+                                print("\t %s MEETS the desired ALR=(%.5f<%s) ON THE VALIDATION, aw=%.5f, phi=%.5f, ew=%.5f, ew_ans=%.5f" %
+                                      (fcc.get_name(), val_fcc_metrics[METRIC_TAG], str(alr), val_fcc_metrics['aw'],
+                                       val_fcc_metrics['phi'], val_fcc_metrics['ew'], val_fcc_metrics['ew_ans']))
                                 if best_single_fcc is None or best_single_fcc[1]['aw'] < val_fcc_metrics['aw']:
                                     best_single_fcc = [fcc, val_fcc_metrics, test_fcc_metrics]
                             else:
@@ -210,54 +234,14 @@ if __name__ == '__main__':
                                         str(train_time) + "," + str(misc_detector.train_time) + "," +
                                         str(clf_val_acc) + "," + str(val_fcc_metrics['aw']) + "," +
                                         str(val_fcc_metrics['ew']) + "," + str(val_fcc_metrics['phi']) + "," +
+                                        str(val_fcc_metrics['ew_ans']) + "," +
                                         str(clf_test_acc) + "," + str(test_fcc_metrics['aw']) + "," +
-                                        str(test_fcc_metrics['ew']) + "," + str(test_fcc_metrics['phi']))
+                                        str(test_fcc_metrics['ew']) + "," + str(test_fcc_metrics['phi']) + "," +
+                                        str(test_fcc_metrics['ew_ans']))
                                     file_handler.write("\n")
 
-                    # Here we have a complete list of suitable candidates
-                    # Evaluation using all available FCCs that meet requirements
-                    ens_fcc = FCCEnsemble(suitable_fccs, data_dict["x_val"], data_dict["y_val"], alr, REJECT_TAG)
-                    ens_fcc.fit(data_dict["x_train"], data_dict["y_train"])
-                    ens_val_fcc_metrics = \
-                        compute_omission_metrics(data_dict["y_val"], ens_fcc.predict(data_dict["x_val"]),
-                                                 reject_tag=REJECT_TAG)
-                    ens_test_fcc_metrics = \
-                        compute_omission_metrics(data_dict["y_test"],
-                                                 ens_fcc.predict(data_dict["x_test"]),
-                                                 reject_tag=REJECT_TAG)
-                    print("%d FCCs meet the desired ALR\n\t the Ensemble has "
-                          "\n\t\t VALIDATION SCORES aw %.5f, ew %.5f, phi %.5f and "
-                          "\n\t\t TEST SCORES aw %.5f, ew %.5f, phi %.5f" %
-                          (len(suitable_fccs),
-                           ens_val_fcc_metrics['aw'], ens_val_fcc_metrics['ew'], ens_val_fcc_metrics['phi'],
-                           ens_test_fcc_metrics['aw'], ens_test_fcc_metrics['ew'], ens_test_fcc_metrics['phi']))
+                    # Saving Data
+                    save_fcc_file(dataset_name, alr, suitable_fccs, data_dict["x_train"], data_dict["y_train"], "TRAIN")
+                    save_fcc_file(dataset_name, alr, suitable_fccs, data_dict["x_val"], data_dict["y_val"], "VALIDATION")
+                    save_fcc_file(dataset_name, alr, suitable_fccs, data_dict["x_test"], data_dict["y_test"], "TEST")
 
-                    if best_single_fcc is not None:
-                        best_name = best_single_fcc[0].get_name()
-                        val_fcc_metrics = best_single_fcc[1]
-                        test_fcc_metrics = best_single_fcc[2]
-                        print("\t whereas the best individual FCC that meets ALR has "
-                              "\n\t\t VALIDATION SCORES aw %.5f, ew %.5f, phi %.5f and "
-                              "\n\t\t TEST SCORES aw %.5f, ew %.5f, phi %.5f" %
-                              (val_fcc_metrics['aw'], val_fcc_metrics['ew'], val_fcc_metrics['phi'],
-                               test_fcc_metrics['aw'], test_fcc_metrics['ew'], test_fcc_metrics['phi']))
-                    else:
-                        best_name = "nobody"
-                        val_fcc_metrics = {'aw': 0, 'ew': 0, 'phi': 1}
-                        test_fcc_metrics = {'aw': 0, 'ew': 0, 'phi': 1}
-
-                    if not (exp_hist is not None and (((exp_hist['dataset_tag'] == dataset_name) &
-                                                       (exp_hist['fcc_name'] == ens_fcc.get_name())).any())):
-                        with open(SCORES_FILE, 'a') as file_handler:
-                            file_handler.write(
-                                dataset_name + ",Ensemble,None," + ens_fcc.get_name() + "," + str(alr) + "," +
-                                str(ens_fcc.is_fcc_meeting_alr()) + ",0,0," +
-                                str(ens_val_fcc_metrics['aw']) + "," + str(ens_val_fcc_metrics['aw']) + "," +
-                                str(ens_val_fcc_metrics['ew']) + "," + str(ens_val_fcc_metrics['phi']) + "," +
-                                str(ens_test_fcc_metrics['aw']) + "," + str(ens_test_fcc_metrics['aw']) + "," +
-                                str(ens_test_fcc_metrics['ew']) + "," + str(ens_test_fcc_metrics['phi']) + "," +
-                                best_name + "," + str(clf_val_acc) + "," + str(val_fcc_metrics['aw']) + "," +
-                                str(val_fcc_metrics['ew']) + "," + str(val_fcc_metrics['phi']) + "," +
-                                str(clf_test_acc) + "," + str(test_fcc_metrics['aw']) + "," +
-                                str(test_fcc_metrics['ew']) + "," + str(test_fcc_metrics['phi']))
-                            file_handler.write("\n")

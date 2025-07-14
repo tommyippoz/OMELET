@@ -15,7 +15,7 @@ from omelet.utils.classifier_utils import is_fit, get_classifier_name, compute_o
 class FailControlledClassifier(AbstractClassifier):
 
     def __init__(self, clf, misc_det: MisclassificationDetector, X_val=None, y_val=None,
-                 alr: float = 0.001, max_thr_iterations: int = 15, reject_tag=None):
+                 alr: float = 0.001, max_thr_iterations: int = 15, reject_tag=None, metric_tag=None):
         """
         Constructor
         """
@@ -29,6 +29,7 @@ class FailControlledClassifier(AbstractClassifier):
         self.rej_thr = -1
         self.train_metrics = None
         self.reject_tag = reject_tag
+        self.metric_tag = metric_tag
 
     def get_reject_thr(self):
         """
@@ -62,10 +63,12 @@ class FailControlledClassifier(AbstractClassifier):
         self.rej_thr = -1
         iter = 0
         while iter < self.max_thr_iterations:
-            aw, ew, phi = self.compute_misc_percentage(clf_preds, rej_probas, tmp_rej_thr, self.y_val)
-            if ew < self.alr:
+            tmp_metrics = self.compute_misc_percentage(clf_preds, rej_probas, tmp_rej_thr, self.y_val)
+            if self.metric_tag not in tmp_metrics:
+                self.metric_tag = 'ew'
+            if tmp_metrics[self.metric_tag] < self.alr:
                 self.rej_thr = tmp_rej_thr
-                self.train_metrics = {'aw': aw, 'ew': ew, 'phi': phi}
+                self.train_metrics = tmp_metrics
                 lower_bound = tmp_rej_thr
                 tmp_rej_thr = (tmp_rej_thr + upper_bound) / 2
             else:
@@ -105,7 +108,10 @@ class FailControlledClassifier(AbstractClassifier):
         preds_with_reject = numpy.where(rej_mask == False, clf_preds, None)
         acc = sum(preds_with_reject == y_true) / len(y_true)
         omissions = numpy.average(preds_with_reject == None)
-        return acc, 1.0 - acc - omissions, omissions
+        met_dict = {'aw': acc, 'ew': 1.0 - acc - omissions, 'phi': omissions}
+        met_dict['ew_ans'] = met_dict['ew'] / (1.0 - omissions) if (1.0 - omissions) > 0 else 0.0
+        return met_dict
+
 
     def classifier_predict_proba(self, X):
         """
