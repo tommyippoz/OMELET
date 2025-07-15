@@ -27,13 +27,13 @@ from omelet.utils.general_utils import current_ms
 
 OUT_FOLDER = "output_folder"
 # Name of the folder in which look for tabular (CSV) datasets
-CSV_FOLDER = "input_folder"
+CSV_FOLDER = "input_folder_icse"
 # Name of the column that contains the label in the tabular (CSV) dataset
 LABEL_NAME = 'multilabel'
 # Name of the 'normal' class in datasets. This will be used only for binary classification (anomaly detection)
 NORMAL_TAG = 0
 # Name of the file in which outputs of the analysis will be saved
-SCORES_FILE = "test_atif_ewans.csv"
+SCORES_FILE = "test_single_fcc.csv"
 # Percentage of test data wrt train data
 TVT_SPLIT = [0.5, 0.2, 0.3]
 # True if debug information needs to be shown
@@ -45,7 +45,7 @@ REJECT_TAG = -1
 # maximum amount of data
 ROW_LIMIT = 100000
 # metric tag
-METRIC_TAG = 'ew_ans'
+METRIC_TAG = 'ew'
 
 # Set random seed for reproducibility
 random.seed(42)
@@ -79,7 +79,7 @@ def get_alrs() -> list:
     Returns the ALRs to be used in the analysis
     :return:
     """
-    return [0.01, 0.001, 0.0001]
+    return [0.005]
 
 
 def detector_needs_classifier(sg):
@@ -97,7 +97,7 @@ def get_misclassification_detectors(classifier, data_dict: dict, detectors_dict:
     """
     detector_list = []
     print("\nGathering Misclassification Detectors\n")
-    for sg in SPROUTGroup:
+    for sg in [SPROUTGroup.UM1, SPROUTGroup.UM2, SPROUTGroup.UM3, SPROUTGroup.UM4, SPROUTGroup.UM8]:
         if detector_needs_classifier(sg):
             misc_det = SPROUTRejection(x_train=data_dict["x_train"], y_train=data_dict["y_train"],
                                        x_val=data_dict["x_val"], y_val=data_dict["y_val"],
