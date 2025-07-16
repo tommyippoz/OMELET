@@ -6,7 +6,7 @@ import pandas
 from omelet.utils.classifier_utils import compute_omission_metrics
 
 FCC_CSV_FOLDER = "output_folder"
-SCORES_FILE = "test_couple_rb.csv"
+SCORES_FILE = "test_couple_rb_all.csv"
 OUTPUT_FOLDER = "matrixes"
 
 REJECT_TAG = -1
