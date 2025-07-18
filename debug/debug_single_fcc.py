@@ -79,7 +79,7 @@ def get_alrs() -> list:
     Returns the ALRs to be used in the analysis
     :return:
     """
-    return [0.005]
+    return [0.02, 0.01, 0.001, 0.0001]
 
 
 def detector_needs_classifier(sg):
