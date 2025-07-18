@@ -82,13 +82,6 @@ def get_alrs() -> list:
     return [0.02, 0.01, 0.001, 0.0001]
 
 
-def detector_needs_classifier(sg):
-    """
-    The SPROUTGroup to analyze
-    """
-    return sg in [SPROUTGroup.UM2, SPROUTGroup.UM3, SPROUTGroup.UM8]
-
-
 def get_misclassification_detectors(classifier, data_dict: dict, detectors_dict: dict) -> list:
     """
     returns the list of prediction rejection strategies to be used in experiments
@@ -97,19 +90,11 @@ def get_misclassification_detectors(classifier, data_dict: dict, detectors_dict:
     """
     detector_list = []
     print("\nGathering Misclassification Detectors\n")
-    for sg in [SPROUTGroup.UM1, SPROUTGroup.UM2, SPROUTGroup.UM3, SPROUTGroup.UM4, SPROUTGroup.UM8]:
-        if detector_needs_classifier(sg):
-            misc_det = SPROUTRejection(x_train=data_dict["x_train"], y_train=data_dict["y_train"],
-                                       x_val=data_dict["x_val"], y_val=data_dict["y_val"],
-                                       classifier=classifier, label_names=data_dict["label_names"],
-                                       uncertainty_measures=[sg])
-        else:
-            if sg not in detectors_dict:
-                detectors_dict[sg] = SPROUTRejection(x_train=data_dict["x_train"], y_train=data_dict["y_train"],
-                                                     x_val=data_dict["x_val"], y_val=data_dict["y_val"],
-                                                     classifier=classifier, label_names=data_dict["label_names"],
-                                                     uncertainty_measures=[sg])
-            misc_det = detectors_dict[sg]
+    for sg in [SPROUTGroup.UM1, SPROUTGroup.UM2, SPROUTGroup.UM4, SPROUTGroup.UM8]:
+        misc_det = SPROUTRejection(x_train=data_dict["x_train"], y_train=data_dict["y_train"],
+                                   x_val=data_dict["x_val"], y_val=data_dict["y_val"],
+                                   classifier=classifier, label_names=data_dict["label_names"],
+                                   uncertainty_measures=[sg])
         detector_list.append(misc_det)
     return detector_list, detectors_dict
 
