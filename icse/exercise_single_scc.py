@@ -33,7 +33,7 @@ LABEL_NAME = 'multilabel'
 # Name of the 'normal' class in datasets. This will be used only for binary classification (anomaly detection)
 NORMAL_TAG = 0
 # Name of the file in which outputs of the analysis will be saved
-SCORES_FILE = "../debug/test_single_fcc.csv"
+SCORES_FILE = "./single_scc_scores.csv"
 # Percentage of test data wrt train data
 TVT_SPLIT = [0.5, 0.2, 0.3]
 # True if debug information needs to be shown
