@@ -1,7 +1,7 @@
 # OMELET
 Framework to support the safe classificatiOn via enseMblEs of SeLf controllEd componenTs
 
-Anonymized and Supporting repository for the ICSE Submission #2434 (Research Track - II Cycle)
+Anonymized and Supporting repository for the Paper Submission
 
 ## Description
 
