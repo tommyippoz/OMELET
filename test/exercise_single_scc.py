@@ -26,8 +26,8 @@ from omelet.utils.dataset_utils import read_binary_tabular_dataset, read_tabular
 from omelet.utils.general_utils import current_ms
 
 OUT_FOLDER = "output_folder"
-# Name of the folder in which look for tabular (CSV) datasets
-CSV_FOLDER = "input_folder_icse"
+# Name of the folder in which look for tabular (in CSV) datasets
+CSV_FOLDER = "input_folder_test"
 # Name of the column that contains the label in the tabular (CSV) dataset
 LABEL_NAME = 'multilabel'
 # Name of the 'normal' class in datasets. This will be used only for binary classification (anomaly detection)
