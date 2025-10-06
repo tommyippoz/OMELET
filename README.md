@@ -19,8 +19,8 @@ OMELET needs the following libraries:
 
 ## Usage
 There are two main scripts
-- icse/exercise_single_scc.py: this allows for using many classifiers, ALRs and rejection strategies to create SCCs that are exercised on different datasets. Performance measures of these SCCs are saved in a CSV file, and additional support files are saved in the icse/output_folder
-- the files in icse/output_folder (i.e., predictions of individual SCCs) are used as input for the icse/exercise_scc_couples.py, which creates couples of SCCs and exercised them on different datasets, computing performance metrics (including gain and drop quantities)
+- test/exercise_single_scc.py: this allows for using many classifiers, ALRs and rejection strategies to create SCCs that are exercised on different datasets. Performance measures of these SCCs are saved in a CSV file, and additional support files are saved in the icse/output_folder
+- the files in test/output_folder (i.e., predictions of individual SCCs) are used as input for the icse/exercise_scc_couples.py, which creates couples of SCCs and exercised them on different datasets, computing performance metrics (including gain and drop quantities)
 
 ## Plots and Data in the Paper
 The ouputs of the two scripts above were copy pasted into "singles" and ""couples" tabs of the excel file in icse/Excel_files and used to extract tables and plots as detailed in the XLSX file (see the README tab within the file)
@@ -28,4 +28,4 @@ The ouputs of the two scripts above were copy pasted into "singles" and ""couple
 ## Data Availability
 Data used within the experimental section of the paper is not ours, thus we cannot share it directly (but it is references in the paper). To allow reviewers cross-checking our results, we provide a password-protected ZIPfile that contains the preprocessed datasets we used in our experiments. The key to open the ZIPfile is the ID of the paper submission.
 
-The ZIPfile is in icse/input_folder_icse path of the repository
+The ZIPfile is in test/input_folder_icse path of the repository
